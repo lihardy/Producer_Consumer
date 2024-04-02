@@ -1,0 +1,102 @@
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <vector>
+
+const int BufferSize = 10;
+std::vector<int> buffer;
+std::mutex mtx;
+std::condition_variable bufferNotEmpty;
+std::condition_variable bufferNotFull;
+
+void produce(int item) {
+    while (true) {
+        mtx.lock();
+        if (buffer.size() < BufferSize) { // 检查缓冲区是否有空间
+            buffer.push_back(item);
+            std::cout << "Produced: " << item << std::endl;
+            mtx.unlock();
+            break; // 成功生产后退出循环
+        }
+        mtx.unlock();
+        // 缓冲区满，让出CPU时间片，减少忙等
+        std::this_thread::yield();
+    }
+}
+
+void produce(int item){
+	bufferNotFull.wait();
+	mtx.lock();
+	buffer.pushback(item);
+	bufferNotEmpty.notify();
+	 std::cout << "Produced: " << item << std::endl;
+	mtx.unlock();
+}
+
+
+
+
+
+
+int consume() {
+    int item = -1;
+    while (true) {
+        mtx.lock();
+        if (!buffer.empty()) { // 检查缓冲区是否非空
+            item = buffer.back();
+            buffer.pop_back();
+            std::cout << "Consumed: " << item << std::endl;
+            mtx.unlock();
+            break; // 成功消费后退出循环
+        }
+        mtx.unlock();
+        // 缓冲区空，让出CPU时间片，减少忙等
+        std::this_thread::yield();
+    }
+    return item;
+}
+
+int consume() {
+	// 上锁前
+	int item= -1;
+	bufferNotEmpty.wait();
+	// 上锁
+	mtx.lock();
+	// 吃
+	item = buffer.back();
+            buffer.pop_back();
+	bufferNotFull.notify();
+            std::cout << "Consumed: " << item << std::endl;
+            
+	// 解锁
+	mtx.unlock();
+}
+
+void producer(int itemsToProduce) {
+    for(int i = 1; i <= itemsToProduce; ++i) {
+        produce(i);
+    }
+}
+
+void consumer(int itemsToConsume) {
+    for(int i = 0; i < itemsToConsume; ++i) {
+        consume();
+    }
+}
+
+int main() {
+    int numProduce, numConsume;
+    std::cin >> numProduce >> numConsume;
+
+    std::thread producerThread(producer, numProduce);
+    std::thread consumerThread(consumer, numConsume);
+
+    producerThread.join();
+    consumerThread.join();
+
+    return 0;
+}
+
+// 1.解决忙等问题
+// condition_variable wait notify()
+
